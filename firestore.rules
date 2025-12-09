@@ -1,0 +1,407 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================
+    // HELPER FUNCTIONS
+    // ============================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAnonymous() {
+      return request.auth != null &&
+             request.auth.token.firebase.sign_in_provider == 'anonymous';
+    }
+
+    function getUserId() {
+      return request.auth.uid;
+    }
+
+    function isTenantMember(tenantId) {
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/tenants/$(tenantId)/members/$(getUserId()));
+    }
+
+    function getTenantMember(tenantId) {
+      return get(/databases/$(database)/documents/tenants/$(tenantId)/members/$(getUserId())).data;
+    }
+
+    function getTenantRole(tenantId) {
+      return getTenantMember(tenantId).role;
+    }
+
+    function isTenantOwner(tenantId) {
+      return isTenantMember(tenantId) && getTenantRole(tenantId) == 'owner';
+    }
+
+    function isTenantAdmin(tenantId) {
+      return isTenantMember(tenantId) && getTenantRole(tenantId) in ['owner', 'admin'];
+    }
+
+    function isTenantMemberOrAbove(tenantId) {
+      return isTenantMember(tenantId) && getTenantRole(tenantId) in ['owner', 'admin', 'member'];
+    }
+
+    function isTenantGuest(tenantId) {
+      return isTenantMember(tenantId) && getTenantRole(tenantId) == 'guest';
+    }
+
+    function isGuestWithProjectAccess(tenantId, projectId) {
+      return isTenantGuest(tenantId) &&
+             projectId in getTenantMember(tenantId).projectIds;
+    }
+
+    function isProjectAssigned(projectData) {
+      return getUserId() in projectData.assignedUsers ||
+             (request.auth.token.email != null && request.auth.token.email in projectData.assignedEmails);
+    }
+
+    function isProjectPublic(projectData) {
+      return projectData.visibility == 'public';
+    }
+
+    // Helper to check if user is admin of a specific tenant (for invites)
+    function isTenantAdminById(tenantId) {
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/tenants/$(tenantId)/members/$(getUserId())) &&
+             get(/databases/$(database)/documents/tenants/$(tenantId)/members/$(getUserId())).data.role in ['owner', 'admin'];
+    }
+
+    // ============================================
+    // USERS COLLECTION
+    // ============================================
+    match /users/{userId} {
+      // Users can read their own document
+      allow read: if isAuthenticated() && getUserId() == userId;
+
+      // Allow authenticated non-anonymous users to query users by email (for invites)
+      // This only allows reading, not listing all users
+      allow read: if isAuthenticated() && !isAnonymous();
+
+      // Users can create their own document (on registration)
+      allow create: if isAuthenticated() && getUserId() == userId;
+
+      // Users can update their own document
+      allow update: if isAuthenticated() && getUserId() == userId;
+
+      // Allow tenant admins to add their tenant to a user's tenants array
+      // This is needed when inviting existing users to a tenant
+      allow update: if isAuthenticated() && !isAnonymous() &&
+                      // Only allow modifying the tenants array
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tenants', 'updatedAt']) &&
+                      // The new tenant being added must have the current user as admin
+                      request.resource.data.tenants.toSet().difference(resource.data.tenants.toSet()).size() == 1;
+
+      // Users cannot delete their document (admin operation)
+      allow delete: if false;
+
+      // ------------------------------------------
+      // NOTIFICATIONS SUBCOLLECTION
+      // ------------------------------------------
+      match /notifications/{notificationId} {
+        // Users can read their own notifications
+        allow read: if isAuthenticated() && getUserId() == userId;
+
+        // Any authenticated user can create notifications for others (system notifications)
+        allow create: if isAuthenticated();
+
+        // Users can update their own notifications (mark as read)
+        allow update: if isAuthenticated() && getUserId() == userId;
+
+        // Users can delete their own notifications
+        allow delete: if isAuthenticated() && getUserId() == userId;
+      }
+    }
+
+    // ============================================
+    // TENANTS COLLECTION
+    // ============================================
+    match /tenants/{tenantId} {
+      // Anyone can read tenant basic info (needed for public project access and navigation)
+      allow read: if true;
+
+      // Any authenticated non-anonymous user can create a tenant
+      allow create: if isAuthenticated() && !isAnonymous();
+
+      // Only admins can update tenant settings
+      allow update: if isTenantAdmin(tenantId);
+
+      // Only owner can delete tenant
+      allow delete: if isTenantOwner(tenantId);
+
+      // ------------------------------------------
+      // MEMBERS SUBCOLLECTION
+      // ------------------------------------------
+      match /members/{memberId} {
+        // Tenant members can see other members
+        allow read: if isTenantMember(tenantId);
+
+        // Allow owner to create their own member doc when creating tenant
+        // Check that: user is creating their own member doc AND tenant has them as owner
+        allow create: if isAuthenticated() &&
+                        memberId == getUserId() &&
+                        request.resource.data.role == 'owner' &&
+                        get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerId == getUserId();
+
+        // Allow user to create their own member doc when accepting an invite
+        // They must be authenticated, non-anonymous, and creating their own member doc
+        allow create: if isAuthenticated() &&
+                        !isAnonymous() &&
+                        memberId == getUserId();
+
+        // Admins can create other members (not themselves - that's handled above)
+        allow create: if isTenantAdmin(tenantId) && memberId != getUserId();
+
+        // Admins can update members
+        allow update: if isTenantAdmin(tenantId);
+
+        // Admins can delete members (but not themselves)
+        allow delete: if isTenantAdmin(tenantId) && memberId != getUserId();
+      }
+
+      // ------------------------------------------
+      // PROJECTS SUBCOLLECTION
+      // ------------------------------------------
+      match /projects/{projectId} {
+        // Public projects - anyone can read (including anonymous)
+        allow read: if isProjectPublic(resource.data);
+
+        // Private projects - must be member (all members can see all private projects)
+        allow read: if isTenantMember(tenantId) && !isTenantGuest(tenantId);
+
+        // Guest users can only read projects they have access to
+        allow read: if isGuestWithProjectAccess(tenantId, projectId);
+
+        // Members and above can create projects
+        allow create: if isTenantMemberOrAbove(tenantId);
+
+        // Admins OR project creator/assigned users can update
+        allow update: if isTenantAdmin(tenantId) ||
+                         (isTenantMemberOrAbove(tenantId) &&
+                          (resource.data.createdBy == getUserId() || isProjectAssigned(resource.data)));
+
+        // Only admins can delete projects
+        allow delete: if isTenantAdmin(tenantId);
+
+        // ------------------------------------------
+        // PROGRESS UPDATES SUBCOLLECTION
+        // ------------------------------------------
+        match /progressUpdates/{updateId} {
+          // Same read rules as parent project
+          allow read: if isProjectPublic(get(/databases/$(database)/documents/tenants/$(tenantId)/projects/$(projectId)).data) ||
+                         isTenantMember(tenantId);
+
+          // Members who can view the project can add updates
+          allow create: if isTenantMemberOrAbove(tenantId);
+
+          // No updates or deletes to progress (immutable history)
+          allow update, delete: if false;
+        }
+
+        // ------------------------------------------
+        // TASKS SUBCOLLECTION
+        // ------------------------------------------
+        match /tasks/{taskId} {
+          // Anyone can read tasks for public projects
+          allow read: if isProjectPublic(get(/databases/$(database)/documents/tenants/$(tenantId)/projects/$(projectId)).data);
+
+          // Tenant members (non-guest) can read all tasks
+          allow read: if isTenantMember(tenantId) && !isTenantGuest(tenantId);
+
+          // Guests can read tasks only from their allowed projects
+          allow read: if isGuestWithProjectAccess(tenantId, projectId);
+
+          // Members can create tasks
+          allow create: if isTenantMemberOrAbove(tenantId);
+
+          // Members can update tasks (assignee, creator, or admin)
+          allow update: if isTenantMemberOrAbove(tenantId);
+
+          // Only admins or task creator can delete
+          allow delete: if isTenantAdmin(tenantId) ||
+                          (isTenantMemberOrAbove(tenantId) && resource.data.createdBy == getUserId());
+
+          // ------------------------------------------
+          // TASK COMMENTS SUBCOLLECTION
+          // ------------------------------------------
+          match /comments/{commentId} {
+            // Tenant members (non-guest) can read comments
+            allow read: if isTenantMember(tenantId) && !isTenantGuest(tenantId);
+
+            // Guests can read comments on tasks from their allowed projects
+            allow read: if isGuestWithProjectAccess(tenantId, projectId);
+
+            // Members can create comments
+            allow create: if isTenantMemberOrAbove(tenantId);
+
+            // Guests can create comments on their allowed projects
+            allow create: if isGuestWithProjectAccess(tenantId, projectId);
+
+            // Only comment author can update their comment
+            allow update: if isTenantMemberOrAbove(tenantId) &&
+                            resource.data.authorId == getUserId();
+
+            // Guests can update their own comments
+            allow update: if isGuestWithProjectAccess(tenantId, projectId) &&
+                            resource.data.authorId == getUserId();
+
+            // Comment author or admins can delete comments
+            allow delete: if isTenantAdmin(tenantId) ||
+                            (isTenantMemberOrAbove(tenantId) && resource.data.authorId == getUserId());
+
+            // Guests can delete their own comments
+            allow delete: if isGuestWithProjectAccess(tenantId, projectId) &&
+                            resource.data.authorId == getUserId();
+          }
+
+          // ------------------------------------------
+          // TASK ATTACHMENTS SUBCOLLECTION
+          // ------------------------------------------
+          match /attachments/{attachmentId} {
+            // Tenant members can read attachments
+            allow read: if isTenantMember(tenantId);
+
+            // Members can upload attachments
+            allow create: if isTenantMemberOrAbove(tenantId);
+
+            // No updates to attachments (immutable)
+            allow update: if false;
+
+            // Uploader or admins can delete attachments
+            allow delete: if isTenantAdmin(tenantId) ||
+                            (isTenantMemberOrAbove(tenantId) && resource.data.uploadedBy == getUserId());
+          }
+
+          // ------------------------------------------
+          // TASK HISTORY SUBCOLLECTION
+          // ------------------------------------------
+          match /history/{historyId} {
+            // Tenant members can read history
+            allow read: if isTenantMember(tenantId);
+
+            // Members can create history entries
+            allow create: if isTenantMemberOrAbove(tenantId);
+
+            // History is immutable (audit trail)
+            allow update, delete: if false;
+          }
+        }
+      }
+
+      // ------------------------------------------
+      // CUSTOMERS SUBCOLLECTION
+      // ------------------------------------------
+      match /customers/{customerId} {
+        // All tenant members can read customers
+        allow read: if isTenantMember(tenantId);
+
+        // Members and above can create/update customers
+        allow create, update: if isTenantMemberOrAbove(tenantId);
+
+        // Only admins can delete customers
+        allow delete: if isTenantAdmin(tenantId);
+      }
+
+      // ------------------------------------------
+      // DEPARTMENTS SUBCOLLECTION
+      // ------------------------------------------
+      match /departments/{departmentId} {
+        // All tenant members can read departments
+        allow read: if isTenantMember(tenantId);
+
+        // Only admins can manage departments
+        allow create, update, delete: if isTenantAdmin(tenantId);
+      }
+
+      // ------------------------------------------
+      // ACTIVITY LOG SUBCOLLECTION
+      // ------------------------------------------
+      match /activityLog/{logId} {
+        // All tenant members can read activity
+        allow read: if isTenantMember(tenantId);
+
+        // Members can create activity logs
+        allow create: if isTenantMemberOrAbove(tenantId);
+
+        // Activity logs are immutable (audit trail)
+        allow update, delete: if false;
+      }
+
+      // ------------------------------------------
+      // API KEYS SUBCOLLECTION
+      // ------------------------------------------
+      match /apiKeys/{keyId} {
+        // Only admins can read API keys
+        allow read: if isTenantAdmin(tenantId);
+
+        // Only admins can create API keys
+        allow create: if isTenantAdmin(tenantId);
+
+        // Only admins can update API keys (revoke, rename)
+        allow update: if isTenantAdmin(tenantId);
+
+        // Only admins can delete API keys
+        allow delete: if isTenantAdmin(tenantId);
+      }
+
+      // ------------------------------------------
+      // KNOWLEDGE BASE SUBCOLLECTION
+      // ------------------------------------------
+      match /knowledge/{entryId} {
+        // All tenant members can read knowledge entries
+        allow read: if isTenantMember(tenantId);
+
+        // Members and above can create knowledge entries
+        allow create: if isTenantMemberOrAbove(tenantId);
+
+        // Members and above can update knowledge entries
+        allow update: if isTenantMemberOrAbove(tenantId);
+
+        // Members can delete their own entries, admins can delete any
+        allow delete: if isTenantAdmin(tenantId) ||
+                        (isTenantMemberOrAbove(tenantId) && resource.data.createdBy == getUserId());
+      }
+    }
+
+    // ============================================
+    // INVITES COLLECTION
+    // ============================================
+    match /invites/{inviteId} {
+      // Allow reading a specific invite by ID (the ID acts as a secret token)
+      // This is needed for the accept-invite page to show invite details
+      allow get: if true;
+
+      // Anyone authenticated can list/query their own invites (by email)
+      allow list: if isAuthenticated() &&
+                    resource.data.email == request.auth.token.email;
+
+      // Tenant admins can list/query invites for their tenant
+      allow list: if isAuthenticated() &&
+                    isTenantAdminById(resource.data.tenantId);
+
+      // Only tenant admins can create invites (must be admin of the tenant in the invite)
+      allow create: if isAuthenticated() &&
+                      !isAnonymous() &&
+                      isTenantAdminById(request.resource.data.tenantId);
+
+      // Invited user can update (accept) their invite
+      allow update: if isAuthenticated() &&
+                      resource.data.email == request.auth.token.email;
+
+      // Tenant admins can delete invites for their tenant, or creator can delete
+      allow delete: if isAuthenticated() &&
+                      (resource.data.invitedBy == getUserId() ||
+                       isTenantAdminById(resource.data.tenantId));
+    }
+
+    // ============================================
+    // PUBLIC PROJECTS QUERY (Collection Group)
+    // ============================================
+    // This allows querying across all tenants for public projects
+    match /{path=**}/projects/{projectId} {
+      allow read: if isProjectPublic(resource.data);
+    }
+  }
+}
