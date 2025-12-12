@@ -201,6 +201,45 @@ service cloud.firestore {
         }
 
         // ------------------------------------------
+        // META SUBCOLLECTION (techInfo, etc.)
+        // ------------------------------------------
+        match /meta/{metaId} {
+          // Same read rules as parent project
+          allow read: if isProjectPublic(get(/databases/$(database)/documents/tenants/$(tenantId)/projects/$(projectId)).data) ||
+                         isTenantMember(tenantId);
+
+          // Members can update meta documents
+          allow create, update: if isTenantMemberOrAbove(tenantId);
+
+          // Only admins can delete meta documents
+          allow delete: if isTenantAdmin(tenantId);
+        }
+
+        // ------------------------------------------
+        // VAULT SUBCOLLECTION (secrets/credentials)
+        // ------------------------------------------
+        match /vault/{entryId} {
+          // Members can read vault entries they own or shared entries
+          allow read: if isTenantMember(tenantId) &&
+                         (resource.data.scope == 'shared' ||
+                          resource.data.createdBy == getUserId() ||
+                          getTenantRole(tenantId) in ['owner', 'admin']);
+
+          // Members can create vault entries
+          allow create: if isTenantMemberOrAbove(tenantId);
+
+          // Owner of entry or admin can update
+          allow update: if isTenantMemberOrAbove(tenantId) &&
+                          (resource.data.createdBy == getUserId() ||
+                           getTenantRole(tenantId) in ['owner', 'admin']);
+
+          // Owner of entry or admin can delete
+          allow delete: if isTenantMemberOrAbove(tenantId) &&
+                          (resource.data.createdBy == getUserId() ||
+                           getTenantRole(tenantId) in ['owner', 'admin']);
+        }
+
+        // ------------------------------------------
         // TASKS SUBCOLLECTION
         // ------------------------------------------
         match /tasks/{taskId} {
