@@ -20,8 +20,8 @@ setGlobalOptions({ region: "europe-west1" });
 const resendApiKey = defineSecret("RESEND_API_KEY");
 
 // App configuration
-const APP_URL = process.env.APP_URL || "https://yet.lu";
-const FROM_EMAIL = "Yetwork <noreply@yet.lu>";
+const APP_URL = process.env.APP_URL || "https://app.yet.watch";
+const FROM_EMAIL = "Yetwork <noreply@yet.watch>";
 
 /**
  * Trigger: When a new invite document is created
@@ -199,7 +199,7 @@ function generateInviteEmailHtml({ tenantName, inviterName, roleName, acceptUrl,
 
         <!-- Brand Footer -->
         <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af;">
-          Powered by <a href="https://yet.lu" style="color: #2563eb; text-decoration: none;">Yetwork</a>
+          Powered by <a href="https://yet.watch" style="color: #2563eb; text-decoration: none;">Yetwork</a>
         </p>
       </td>
     </tr>
@@ -228,7 +228,7 @@ ${acceptUrl}
 This invitation expires in 7 days.
 
 ---
-Powered by Yetwork (https://yet.lu)
+Powered by Yetwork (https://yet.watch)
   `.trim();
 }
 
@@ -601,7 +601,7 @@ function generateTaskAssignedHtml({ taskTitle, taskDescription, projectTitle, te
           </tr>
         </table>
         <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af;">
-          Yetwork &middot; <a href="${APP_URL}" style="color: #2563eb;">yet.lu</a>
+          Yetwork &middot; <a href="${APP_URL}" style="color: #2563eb;">yet.watch</a>
         </p>
       </td>
     </tr>
@@ -690,7 +690,7 @@ function generateDueReminderHtml({ userName, tenantName, tenantSlug, tasks }) {
           </tr>
         </table>
         <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af;">
-          Yetwork &middot; <a href="${APP_URL}" style="color: #2563eb;">yet.lu</a>
+          Yetwork &middot; <a href="${APP_URL}" style="color: #2563eb;">yet.watch</a>
         </p>
       </td>
     </tr>
@@ -757,7 +757,7 @@ function generateCommentNotificationHtml({ taskTitle, projectTitle, tenantName, 
           </tr>
         </table>
         <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af;">
-          Yetwork &middot; <a href="${APP_URL}" style="color: #2563eb;">yet.lu</a>
+          Yetwork &middot; <a href="${APP_URL}" style="color: #2563eb;">yet.watch</a>
         </p>
       </td>
     </tr>
