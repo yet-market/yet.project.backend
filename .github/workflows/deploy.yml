@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  FIREBASE_PROJECT_ID: yetwork-project
+  FIREBASE_PROJECT_ID: erold-project
 
 jobs:
   # Run tests on PRs and pushes

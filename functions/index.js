@@ -1,5 +1,5 @@
 /**
- * Firebase Cloud Functions for Yetwork
+ * Firebase Cloud Functions for Erold
  * Handles email notifications via Resend
  */
 
@@ -20,8 +20,8 @@ setGlobalOptions({ region: "europe-west1" });
 const resendApiKey = defineSecret("RESEND_API_KEY");
 
 // App configuration
-const APP_URL = process.env.APP_URL || "https://app.yet.watch";
-const FROM_EMAIL = "Yetwork <noreply@yet.watch>";
+const APP_URL = process.env.APP_URL || "https://app.erold.dev";
+const FROM_EMAIL = "Erold <noreply@erold.dev>";
 
 /**
  * Trigger: When a new invite document is created
@@ -77,7 +77,7 @@ exports.sendInviteEmail = onDocumentCreated(
       const { data, error } = await resend.emails.send({
         from: FROM_EMAIL,
         to: invite.email,
-        subject: `You're invited to join ${invite.tenantName} on Yetwork`,
+        subject: `You're invited to join ${invite.tenantName} on Erold`,
         html: generateInviteEmailHtml({
           tenantName: invite.tenantName,
           inviterName,
@@ -161,10 +161,10 @@ function generateInviteEmailHtml({ tenantName, inviterName, roleName, acceptUrl,
                 Hi there,
               </p>
               <p style="margin: 0 0 16px; font-size: 16px; line-height: 1.6; color: #4b5563;">
-                <strong>${inviterName}</strong> has invited you to join <strong>${tenantName}</strong> as a <strong>${roleName}</strong> on Yetwork.
+                <strong>${inviterName}</strong> has invited you to join <strong>${tenantName}</strong> as a <strong>${roleName}</strong> on Erold.
               </p>
               <p style="margin: 0 0 24px; font-size: 16px; line-height: 1.6; color: #4b5563;">
-                Yetwork is a project management platform that helps teams collaborate and deliver projects efficiently.
+                Erold is a project management platform that helps teams collaborate and deliver projects efficiently.
               </p>
 
               <!-- CTA Button -->
@@ -199,7 +199,7 @@ function generateInviteEmailHtml({ tenantName, inviterName, roleName, acceptUrl,
 
         <!-- Brand Footer -->
         <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af;">
-          Powered by <a href="https://yet.watch" style="color: #2563eb; text-decoration: none;">Yetwork</a>
+          Powered by <a href="https://erold.dev" style="color: #2563eb; text-decoration: none;">Erold</a>
         </p>
       </td>
     </tr>
@@ -218,9 +218,9 @@ You're invited to join ${tenantName}
 
 Hi there,
 
-${inviterName} has invited you to join ${tenantName} as a ${roleName} on Yetwork.
+${inviterName} has invited you to join ${tenantName} as a ${roleName} on Erold.
 
-Yetwork is a project management platform that helps teams collaborate and deliver projects efficiently.
+Erold is a project management platform that helps teams collaborate and deliver projects efficiently.
 
 Accept your invitation by clicking the link below:
 ${acceptUrl}
@@ -228,7 +228,7 @@ ${acceptUrl}
 This invitation expires in 7 days.
 
 ---
-Powered by Yetwork (https://yet.watch)
+Powered by Erold (https://erold.dev)
   `.trim();
 }
 
@@ -601,7 +601,7 @@ function generateTaskAssignedHtml({ taskTitle, taskDescription, projectTitle, te
           </tr>
         </table>
         <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af;">
-          Yetwork &middot; <a href="${APP_URL}" style="color: #2563eb;">yet.watch</a>
+          Erold &middot; <a href="${APP_URL}" style="color: #2563eb;">erold.dev</a>
         </p>
       </td>
     </tr>
@@ -623,7 +623,7 @@ Project: ${projectTitle}
 View task: ${taskUrl}
 
 ---
-Yetwork (${APP_URL})
+Erold (${APP_URL})
   `.trim();
 }
 
@@ -690,7 +690,7 @@ function generateDueReminderHtml({ userName, tenantName, tenantSlug, tasks }) {
           </tr>
         </table>
         <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af;">
-          Yetwork &middot; <a href="${APP_URL}" style="color: #2563eb;">yet.watch</a>
+          Erold &middot; <a href="${APP_URL}" style="color: #2563eb;">erold.dev</a>
         </p>
       </td>
     </tr>
@@ -713,7 +713,7 @@ Tasks Due Soon in ${tenantName}
 ${taskList}
 
 ---
-Yetwork (${APP_URL})
+Erold (${APP_URL})
   `.trim();
 }
 
@@ -757,7 +757,7 @@ function generateCommentNotificationHtml({ taskTitle, projectTitle, tenantName, 
           </tr>
         </table>
         <p style="margin: 24px 0 0; font-size: 12px; color: #9ca3af;">
-          Yetwork &middot; <a href="${APP_URL}" style="color: #2563eb;">yet.watch</a>
+          Erold &middot; <a href="${APP_URL}" style="color: #2563eb;">erold.dev</a>
         </p>
       </td>
     </tr>
@@ -778,6 +778,6 @@ ${commentText}
 View conversation: ${taskUrl}
 
 ---
-Yetwork (${APP_URL})
+Erold (${APP_URL})
   `.trim();
 }
